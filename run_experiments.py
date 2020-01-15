@@ -338,7 +338,15 @@ def check_project(project, project_dir, config, num_jobs):
         cmd += " --saargs %s " % filename
         cmd += " --skip %s " % skippath
         cmd += collect_args("analyze_args", conf_sources)
-        run_command(cmd, print_error=True, env=env)
+
+        cmd = '/usr/bin/time -v -- ' + cmd
+        _, _, analyze_stderr = run_command(cmd, print_error=True, env=env)
+
+        timestat_lines = analyze_stderr.splitlines()[-23:]
+
+        timestat_path = os.path.join(run_config['result_path'], 'time_stats')
+        with open(timestat_path, 'w') as timestat_file:
+            timestat_file.write('\n'.join(timestat_lines))
 
         logging.info("[%s] Done. Storing results...", name)
         cmd = "CodeChecker store '%s' --url '%s' -n %s " \
@@ -376,6 +384,7 @@ def process_success(path, statistics=None):
                     match = stat.regex.search(line)
                     if match:
                         stat.counter[match.group(1)] += 1
+
     return statistics
 
 
@@ -488,6 +497,14 @@ def post_process_project(project, project_dir, config, printer):
                 disk_usage += os.path.getsize(os.path.join(path, f))
 
         stats["Disk usage"] = disk_usage
+
+        timestat_path = os.path.join(run_config['result_path'], 'time_stats')
+
+        with open(timestat_path) as timestat_file:
+            for timestat_line in timestat_file.readlines():
+                stat_name  = timestat_line.split(': ')[0].strip()
+                stat_value = timestat_line.split(': ')[1].strip()
+                stats[stat_name] = stat_value
 
         project_stats[run_config["name"]] = stats
 

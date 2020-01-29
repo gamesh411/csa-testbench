@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 import json
 from html import escape
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from datetime import timedelta
 from difflib import SequenceMatcher
+
+# Credits:
+# https://stackoverflow.com/questions/6190331/how-to-implement-an-ordered-default-dict
+class OrderedDefaultDict(OrderedDict, defaultdict):
+    def __init__(self, default_factory=None, *args, **kwargs):
+        super(OrderedDefaultDict, self).__init__(*args, **kwargs)
+        self.default_factory = default_factory
 
 try:
     import plotly.offline as py
@@ -122,7 +129,7 @@ class HTMLPrinter:
         self.charts = config.get("charts", ["Duration", "Result count"])
         self.excludes = ["TU times"]
         self.as_comment = ["Analyzer version"]
-        self.projects = {}
+        self.projects = OrderedDict()
         with open(self.html_path, 'w') as stat_html:
             stat_html.write(HEADER)
             stat_html.write("<!-- %s -->\n" %
@@ -159,13 +166,14 @@ class HTMLPrinter:
         self.finish()
 
     def extend_with_project(self, name, data):
+        print('extend_with_project called with name=%s' % name)
         first = len(self.projects) == 0
         self.projects[name] = data
         stat_html = open(self.html_path, 'a')
         keys = set()
-        configurations = set()
+        configurations = list()
         for configuration, val in data.items():
-            configurations.add(configuration)
+            configurations.append(configuration)
             for stat_name in val:
                 keys.add(stat_name)
         keys = sort_keys_by_similarity(keys)
@@ -238,8 +246,8 @@ class HTMLPrinter:
             return
         layout = go.Layout(barmode='group')
         for chart in self.charts:
-            names = defaultdict(list)
-            values = defaultdict(list)
+            names = OrderedDefaultDict(list)
+            values = OrderedDefaultDict(list)
             for project, data in self.projects.items():
                 for configuration, stats in data.items():
                     values[configuration].append(

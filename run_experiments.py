@@ -12,7 +12,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-from collections import Counter
+from collections import Counter, OrderedDict
 from datetime import datetime, timedelta
 from distutils.dir_util import copy_tree
 from io import TextIOWrapper
@@ -424,7 +424,7 @@ def post_process_project(project, project_dir, config, printer):
     _, stdout, _ = run_command(
         "CodeChecker cmd runs --url %s -o json" % config['CodeChecker']['url'])
     runs = json.loads(stdout)
-    project_stats = {}
+    project_stats = OrderedDict()
     fatal_errors = 0
     for run_config in project["configurations"]:
         cov_result_html = None

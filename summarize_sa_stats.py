@@ -4,7 +4,7 @@ from __future__ import division, print_function
 import os
 import re
 import sys
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from enum import Enum
 from math import floor, log10
 
@@ -52,7 +52,7 @@ class StatType(Enum):
 def summ_stats(path, verbose=True):
     stat_map = defaultdict(int)
     per_helper = defaultdict(int)
-    group = {}
+    group = OrderedDict()
     if os.path.isdir(path):
         for stat_file in os.listdir(path):
             summ_stats_on_file(os.path.join(path, stat_file), stat_map, per_helper, group)
@@ -78,23 +78,57 @@ def summ_stats(path, verbose=True):
 
 
 def summ_stats_on_file(filename, stat_map, per_helper, group):
+    """
+    Example output
+
+===-------------------------------------------------------------------------===
+                          ... Statistics Collected ...
+===-------------------------------------------------------------------------===
+
+   12 AnalysisConsumer - The maximum number of basic blocks in a function.
+ 2524 AnalysisConsumer - The # of basic blocks in the analyzed functions.
+  690 AnalysisConsumer - The # of functions at top level.
+  453 AnalysisConsumer - The # of functions and blocks analyzed (as top level with inlining turned on).
+ 2266 AnalysisConsumer - The # of visited basic blocks in the analyzed functions.
+   89 AnalysisConsumer - The % of reachable basic blocks.
+  582 CoreEngine       - The # of paths explored by the analyzer.
+21124 CoreEngine       - The # of steps executed.
+  583 ExprEngine       - The # of times we inlined a call
+   35 ExprEngine       - The # of aborted paths due to reaching the maximum block count in a top level function
+    5 ExprEngine       - The # of times we split the path due to imprecise dynamic dispatch info
+ 6102 ExprEngine       - The # of times RemoveDeadBindings is called
+  383 file-search      - Number of attempted #includes.
+  193 file-search      - Number of #includes skipped due to the multi-include optimization.
+
+===-------------------------------------------------------------------------===
+                                Analyzer timers
+===-------------------------------------------------------------------------===
+  Total Execution Time: 0.1215 seconds (0.1214 wall clock)
+
+   ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
+   0.1099 ( 92.0%)   0.0000 (  0.0%)   0.1099 ( 90.5%)   0.1099 ( 90.5%)  Path exploration time
+   0.0093 (  7.8%)   0.0020 (100.0%)   0.0113 (  9.3%)   0.0112 (  9.3%)  Syntax-based analysis time
+   0.0003 (  0.2%)   0.0000 (  0.0%)   0.0003 (  0.2%)   0.0003 (  0.2%)  Path-sensitive report post-processing time
+   0.1195 (100.0%)   0.0020 (100.0%)   0.1215 (100.0%)   0.1214 (100.0%)  Total
+    """
+
     type_pattern = ''
     for t in StatType:
         type_pattern += t.value + '|'
     type_pattern = type_pattern[:-1]
-    stat_pattern = re.compile(r"([0-9]+(?:\.[0-9]+)?) (.+) - (The (" + type_pattern + r") .+)")
-    timer_pattern = re.compile(r".+\(.+\).+\(.+\).+\(.+\)(.+)\(.+\).+analyzer total time",
+    stat_pattern = re.compile(r"(?P<value>[0-9]+)\s+(?P<source>\S+)\s+-\s+(?P<name>The (?P<type>" + type_pattern + r") .+)")
+    timer_pattern = re.compile(r"Total Execution Time: (?P<seconds>[0-9]+(?:\.[0-9]*)?) seconds",
                                re.IGNORECASE)
-    act_nums = {}
-    per_to_num_map = {}
-    per_to_update = {}
+    act_nums = OrderedDict()
+    per_to_num_map = OrderedDict()
+    per_to_update = OrderedDict()
     is_in_stat_block = False
     f = open(filename)
     lines = f.readlines()
     for line in lines:
         m = timer_pattern.search(line)
         if m:
-            val = float(m.group(1).strip())
+            val = float(m.group('seconds'))
             if "TU times" in stat_map:
                 stat_map["TU times"].append(val)
             else:
@@ -102,10 +136,10 @@ def summ_stats_on_file(filename, stat_map, per_helper, group):
         m = stat_pattern.search(line)
         if m:
             is_in_stat_block = True
-            stat_type = StatType(m.group(4))
-            stat_name = m.group(3)
-            stat_val = m.group(1)
-            group[stat_name] = m.group(2)
+            stat_type = StatType(m.group('type'))
+            stat_name = m.group('name')
+            stat_val = m.group('value')
+            group[stat_name] = m.group('source')
             if stat_type == StatType.NUM:
                 stat_map[stat_name] += int(stat_val)
                 act_nums[stat_name] = int(stat_val)
@@ -124,7 +158,7 @@ def summ_stats_on_file(filename, stat_map, per_helper, group):
                 assert not (key in per_to_num_map and per_to_num_map[key] != num_data)
                 per_to_num_map[key] = num_data
                 stat_map[key] = floor(per_helper[num_data]) / stat_map[num_data]
-            act_nums = {}
+            act_nums = OrderedDict()
 
 
 def main(argv):

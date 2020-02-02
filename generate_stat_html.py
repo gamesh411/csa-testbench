@@ -1,5 +1,7 @@
 #!/usr/bin/env python2
 import json
+import os
+import re
 from cgi import escape
 from collections import defaultdict, OrderedDict
 from datetime import timedelta
@@ -161,7 +163,6 @@ class HTMLPrinter(object):
             stat_html.write(FOOTER)
 
     def extend_with_project(self, name, data):
-        print('extend_with_project called with name=%s' % name)
         first = len(self.projects) == 0
         self.projects[name] = data
         stat_html = open(self.html_path, 'a')
@@ -232,6 +233,18 @@ class HTMLPrinter(object):
         stat_html.write("<h3>Time per TU histogram</h3>\n")
         stat_html.write(div)
 
+    def _get_color(self, config_name):
+        if config_name.startswith('base'):
+            return '#7293cb'
+
+        if config_name.startswith('ctu'):
+            return '#e1974c'
+
+        if config_name.startswith('odm'):
+            return '#84ba5b'
+
+        return '#808585'
+
     def _generate_charts(self, stat_html):
         stat_html.write('<div class="tab-pane fade" id="nav-charts"'
                         ' role="tabpanel" aria-labelledby="nav-charts-tab">\n')
@@ -239,7 +252,7 @@ class HTMLPrinter(object):
             stat_html.write("<p>Charts not supported."
                             "Install Plotly python library.</p>\n</div>\n")
             return
-        layout = go.Layout(barmode='group')
+
         for chart in self.charts:
             names = OrderedDefaultDict(list)
             values = OrderedDefaultDict(list)
@@ -253,12 +266,28 @@ class HTMLPrinter(object):
             if all([all([x == 0 for x in values[conf]]) for conf in names]):
                 continue
 
-            bars = []
-            for conf in names:
-                bar = go.Bar(x=names[conf], y=values[conf], name=conf)
-                bars.append(bar)
+            yaxis_type = 'log' if chart == 'Disk usage' else '-'
 
-            fig = go.Figure(data=bars, layout=layout)
+            layout = go.Layout(yaxis=go.layout.YAxis(title=chart, type=yaxis_type),
+                   xaxis=go.layout.XAxis(title='Methods'),
+                   barmode='group',
+                   bargap=0.15,
+                   bargroupgap=0.1)
+
+            fig = go.Figure(layout=layout)
+
+            for conf, project in names.items():
+                color = self._get_color(conf)
+                fig.add_trace(go.Bar(x=names[conf], y=values[conf], text=values[conf], textposition='outside', texttemplate='%{text:.3s}', marker_color=color, name=conf))
+
+            chart_directory = os.path.dirname(self.html_path)
+
+            chart_file = chart.replace('#', 'number').replace('%', 'percent')
+            chart_file = re.sub(r'[^a-zA-Z0-9\.\-]', '_', chart_file) + '.pdf'
+
+            image_path = os.path.join(chart_directory, chart_file)
+            fig.write_image(image_path)
+
             div = py.plot(fig, show_link=False, include_plotlyjs=False,
                           output_type='div', auto_open=False)
             stat_html.write("<h2>%s</h2>\n" % escape(chart))

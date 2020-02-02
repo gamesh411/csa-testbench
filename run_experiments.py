@@ -424,11 +424,10 @@ def create_link(url, text):
     return '<a href="%s">%s</a>' % (url, text)
 
 
-def post_process_project(project, project_dir, config, printer):
+def post_process_project(project, project_dir, config, printer, stats_for_project):
     _, stdout, _ = run_command(
         "CodeChecker cmd runs --url %s -o json" % config['CodeChecker']['url'])
     runs = json.loads(stdout)
-    project_stats = OrderedDict()
     fatal_errors = 0
     for run_config in project["configurations"]:
         cov_result_html = None
@@ -472,7 +471,7 @@ def post_process_project(project, project_dir, config, printer):
                 run = run[run_config['full_name']]
                 break
         stats["Result count"] = run["resultCount"]
-        stats["Duration"] = timedelta(seconds=run["duration"])
+        stats["Duration"] = seconds=run["duration"]
         stats["CodeChecker link"] = \
             create_link("%s/#run=%s&tab=%s" % (config['CodeChecker']['url'],
                                                run_config['full_name'],
@@ -509,9 +508,15 @@ def post_process_project(project, project_dir, config, printer):
 
         stats["Disk usage"] = disk_usage
 
-        project_stats[run_config["name"]] = stats
+        # Stats for specific configuration in context of a project
+        stats_for_project[run_config["name"]] = stats
+        
+        # Save individual configuration stats
+        stat_file_path = os.path.join(run_config['result_path'], 'stats.json')
+        with open(stat_file_path, 'w') as stat_file:
+            json.dump(stats, stat_file) 
 
-    printer.extend_with_project(project["name"], project_stats)
+    printer.extend_with_project(project["name"], stats_for_project)
     print("%s [%s] Postprocessed." % (timestamp(), project['name']))
     return fatal_errors
 
@@ -560,27 +565,45 @@ def main():
     stats_html = os.path.join(projects_root, "stats.html")
     printer = HTMLPrinter(stats_html, config)
 
-    for project in config['projects']:
-        project_dir = os.path.join(projects_root, project['name'])
-        source_dir = os.path.join(project_dir, project.get('source_dir', ''))
-        package = project.get('package')
-        if package:
-            build_package(project, project_dir, args.jobs)
-        else:
-            if not clone_project(project, project_dir, source_dir):
-                shutil.rmtree(project_dir)
-                continue
-            if not log_project(project, source_dir, args.jobs):
-                continue
-        check_project(project, source_dir, config, args.jobs)
-        fatal_errors = post_process_project(project, source_dir, config,
-                                            printer)
-        if fatal_errors > 0 and args.fail_on_assert:
-            print('Stopping after assertion failure.')
-            printer.finish()
-            exit(1)
+    fatal_errors = 0
 
-    printer.finish()
+    try:
+        # All stats
+        stats = OrderedDict()
+        for project in config['projects']:
+
+            # Stats for the specific project
+            stats_for_project = OrderedDict()
+            stats[project['name']] = stats_for_project
+
+            project_dir = os.path.join(projects_root, project['name'])
+            source_dir = os.path.join(project_dir, project.get('source_dir', ''))
+            package = project.get('package')
+            if package:
+                build_package(project, project_dir, args.jobs)
+            else:
+                if not clone_project(project, project_dir, source_dir):
+                    print('Could not clone project "%s" , cleaning up project dir "%s" and continuing...' % (project['name'], project_dir))
+                    shutil.rmtree(project_dir)
+                    continue
+                if not log_project(project, source_dir, args.jobs):
+                    print('Could not log project "%s", continuing...' % project)
+                    continue
+            print('Checking project "%s"...' % project['name'])
+            check_project(project, source_dir, config, args.jobs)
+            print('Post-processing project "%s"...' % project['name'])
+
+            fatal_errors = post_process_project(project, source_dir, config,
+                                            printer, stats_for_project)
+            all_stat_file_path = os.path.join(projects_root, 'stats.json')
+            with open(all_stat_file_path, 'w') as stat_file:
+                json.dump(stats, stat_file) 
+    finally:
+        printer.finish()
+        
+    if fatal_errors > 0 and args.fail_on_assert:
+        print('Stopping after assertion failure.')
+        exit(1)
 
     logged_projects = check_logged(projects_root, config['projects'])
     print("\nNumber of analyzed projects: %d / %d"

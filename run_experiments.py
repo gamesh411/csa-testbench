@@ -515,6 +515,10 @@ def post_process_project(project, project_dir, config, printer):
 
         project_stats[run_config["name"]] = stats
 
+        results_path = os.path.join(run_config['result_path'], 'results.json')
+        with open(results_path, 'w') as results_file:
+            json.dump(stats, results_file, indent=2, sort_keys=True, default=str)
+
     printer.extend_with_project(project["name"], project_stats)
     logging.info("[%s] Postprocessed.", project['name'])
     return fatal_errors

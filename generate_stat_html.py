@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 import json
 from html import escape
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from datetime import timedelta
 from difflib import SequenceMatcher
-
-# Credits:
-# https://stackoverflow.com/questions/6190331/how-to-implement-an-ordered-default-dict
-class OrderedDefaultDict(OrderedDict, defaultdict):
-    def __init__(self, default_factory=None, *args, **kwargs):
-        super(OrderedDefaultDict, self).__init__(*args, **kwargs)
-        self.default_factory = default_factory
 
 try:
     import plotly.offline as py
@@ -129,7 +122,7 @@ class HTMLPrinter:
         self.charts = config.get("charts", ["Duration", "Result count"])
         self.excludes = ["TU times"]
         self.as_comment = ["Analyzer version"]
-        self.projects = OrderedDict()
+        self.projects = {}
         with open(self.html_path, 'w') as stat_html:
             stat_html.write(HEADER)
             stat_html.write("<!-- %s -->\n" %
@@ -246,8 +239,8 @@ class HTMLPrinter:
             return
         layout = go.Layout(barmode='group')
         for chart in self.charts:
-            names = OrderedDefaultDict(list)
-            values = OrderedDefaultDict(list)
+            names = defaultdict(list)
+            values = defaultdict(list)
             for project, data in self.projects.items():
                 for configuration, stats in data.items():
                     values[configuration].append(
